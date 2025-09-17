@@ -11,10 +11,12 @@ logging.basicConfig(filename='bot_log.txt', level=logging.INFO,
                     format='%(asctime)s - %(message)s')
 
 # URL dashboard
-URL = "https://vps.sillydevelopment.co.uk"
-
-# Đường dẫn đến file cookie
+URL = "https://panel.sillydev.co.uk/auth/login"
 COOKIE_FILE = "cookies.json"
+
+# Thông tin đăng nhập (lưu trong biến môi trường trên Render)
+USERNAME = os.getenv('SILLYDEV_USERNAME', 'phengfff333@gmail.com')
+PASSWORD = os.getenv('SILLYDEV_PASSWORD', 'your_password')
 
 def setup_driver():
     """Khởi tạo driver Chrome headless"""
@@ -27,30 +29,57 @@ def setup_driver():
     driver = webdriver.Chrome(options=options)
     return driver
 
+def login_and_save_cookies(driver):
+    """Đăng nhập và lưu cookie mới"""
+    try:
+        driver.get(URL)
+        time.sleep(2)
+        driver.find_element(By.ID, "login_email").send_keys(USERNAME)
+        driver.find_element(By.ID, "login_password").send_keys(PASSWORD)
+        driver.find_element(By.ID, "login_button").click()
+        time.sleep(5)  # Đợi dashboard load
+        cookies = driver.get_cookies()
+        with open(COOKIE_FILE, 'w') as f:
+            json.dump(cookies, f)
+        logging.info("Đã đăng nhập và lưu cookie mới")
+        print("Đã đăng nhập và lưu cookie mới")
+        return cookies
+    except Exception as e:
+        logging.error(f"Lỗi khi đăng nhập: {e}")
+        print(f"Lỗi khi đăng nhập: {e}")
+        return None
+
 def load_cookies(driver):
     """Tải cookie từ file"""
     try:
         with open(COOKIE_FILE, 'r') as f:
             cookies = json.load(f)
-        driver.get(URL)  # Truy cập URL trước để set domain
+        driver.get(URL)
         for cookie in cookies:
             driver.add_cookie(cookie)
         logging.info("Đã tải cookie")
         print("Đã tải cookie")
+        return True
     except Exception as e:
         logging.error(f"Lỗi khi tải cookie: {e}")
         print(f"Lỗi khi tải cookie: {e}")
+        return False
 
 def kiem_tra_web():
     """Scrape trang cá nhân với cookie"""
     driver = setup_driver()
     try:
-        # Tải cookie và truy cập dashboard
-        load_cookies(driver)
-        driver.get(URL)
-        time.sleep(5)  # Đợi dashboard load
+        # Thử tải cookie
+        if not load_cookies(driver):
+            cookies = login_and_save_cookies(driver)
+            if not cookies:
+                return
 
-        # Kiểm tra đăng nhập thành công
+        # Truy cập dashboard
+        driver.get(URL)
+        time.sleep(5)
+
+        # Kiểm tra đăng nhập
         try:
             profile_name = driver.find_element(By.CLASS_NAME, "user-profile").text  # Thay bằng class thật
             logging.info(f"Tên tài khoản: {profile_name}")
@@ -58,6 +87,7 @@ def kiem_tra_web():
         except:
             logging.error("Không tìm thấy tên tài khoản. Cookie có thể hết hạn.")
             print("Không tìm thấy tên tài khoản. Cookie có thể hết hạn.")
+            login_and_save_cookies(driver)
             return
 
         # Scrape trạng thái server
