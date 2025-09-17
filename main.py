@@ -1,79 +1,98 @@
-#import os
-#os.system("pip install -r requirements.txt")
-
-from colorama import init,Fore, Back, Style
-from threading import Thread
-from time import sleep
-import datetime
 import requests
+import time
 import json
-init()
+import os
+import base64
+from colorama import Fore, Style, init
+from datetime import datetime
+try:
+    import cloudscraper
+except ImportError:
+    cloudscraper = None
 
-class User:
-    def __init__(self, apikey, color):
-        self.apikey = apikey
-        self.color = f'\033[{color}'
-        self._running = False
+# Initialize colorama
+init(autoreset=True)
 
-        self._headers = {
-            "Authorization": "Bearer "+apikey,
-            "Content-Type": "application/json",
-            "Accept": "Application/vnd.pterodactyl.v1+json"
-        }
+# Load users from users.json
+def load_users():
+    try:
+        with open('users.json', 'r') as f:
+            users = json.load(f)
+        return users
+    except FileNotFoundError:
+        print(f"{Fore.RED}Error: users.json not found. Please create it with your API keys.{Style.RESET_ALL}")
+        return {}
+    except json.JSONDecodeError:
+        print(f"{Fore.RED}Error: Invalid JSON in users.json{Style.RESET_ALL}")
+        return {}
 
-        self._baseURL = "https://panel.sillydev.co.uk/api/"
+# Farm coins for a user
+def farm_coins(api_key, color_code):
+    url = "https://panel.sillydev.co.uk/api/client/store/earncredits"
+    # Decode key if encoded
+    try:
+        decoded_key = base64.b64decode(api_key).decode() if api_key.startswith('cHRsY18=') else api_key
+    except:
+        decoded_key = api_key
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Accept': 'application/json, text/plain, */*',
+        'Content-Type': 'application/json',
+        'Origin': 'https://panel.sillydev.co.uk',
+        'Referer': 'https://panel.sillydev.co.uk/store/credits',
+        'X-Requested-With': 'XMLHttpRequest',
+        'Authorization': f'Bearer {decoded_key}'  # Adjust if server uses different header
+    }
+    session = cloudscraper.create_scraper() if cloudscraper else requests.Session()
+    try:
+        response = session.post(url, headers=headers, json={}, timeout=10)
+        if response.status_code == 200:
+            print(f"{Fore.BLUE + Style.BRIGHT}Success: Earned coins!{Style.RESET_ALL}")
+            return True
+        elif response.status_code == 401:
+            print(f"{Fore.RED}Error: Invalid token - Check your API key{Style.RESET_ALL}")
+            return False
+        elif response.status_code == 419:
+            print(f"{Fore.YELLOW}Error: Token expired - Regenerate API key{Style.RESET_ALL}")
+            return False
+        elif response.status_code in (301, 302, 303):
+            print(f"{Fore.RED}Error: Redirect detected - {response.headers.get('Location', 'Unknown')}{Style.RESET_ALL}")
+            return False
+        else:
+            print(f"{Fore.RED}Error: {response.status_code} - {response.text}{Style.RESET_ALL}")
+            return False
+    except requests.exceptions.RequestException as e:
+        print(f"{Fore.RED}Error: Request failed - {e}{Style.RESET_ALL}")
+        return False
 
-        r = requests.get(self._baseURL+"client/account", headers=self._headers)
-        if r.status_code != 200: exit("Error: Invalid token")
-        self.userdata = r.json()["attributes"]
+# Main loop
+def main():
+    users = load_users()
+    if not users:
+        print("No users configured. Please add to users.json")
+        return
 
-    def _log(self, text):
-        color_reset = f"{Fore.RESET}{Back.RESET}{Style.RESET_ALL}"
-        
-        time = datetime.datetime.now().strftime("%H:%M:%S %d/%m")
-        print(f"{self.color}{self.userdata['username']}{color_reset} [{time}] {text}")
+    print("Starting SillyDev Coins Farmer...")
+    for username, config in users.items():
+        api_key, color_code = config
+        if not api_key.startswith(('ptlc_', 'cHRsY18=')):  # Accept both raw and base64-encoded key
+            print(f"{Fore.RED}Error: Invalid token for {username} - API key must start with 'ptlc_' or be base64-encoded{Style.RESET_ALL}")
+            continue
 
-    def getBalance(self):
-        r = requests.get("https://panel.sillydev.co.uk/api/client/store", headers=self._headers)
-        if r.status_code != 200: exit("Error: Invalid token")
-        return r.json()["attributes"]["balance"]
-    
-    def mainloop(self):
-        while self._running:
-            try:
-                for i in range(0, 60):
-                    sleep(1)
-                    if not self._running: break
+        print(f"Farming for {username}...")
+        success = farm_coins(api_key, color_code)
+        if not success:
+            print(f"Failed to farm for {username}")
 
-                r = requests.post(self._baseURL+"client/store/earn", headers=self._headers)
-                if r.status_code == 204:
-                    self._log(f"{self.getBalance()}$ | Coins redeemed")
-                elif r.status_code == 429:
-                    self._log(f"Error 429 | Waiting 60s")
-                    for i in range(0, 60):
-                        sleep(1)
-                        if not self._running: break
-            except Exception as err:
-                self._log(f"Error while running: {err}")
+    time.sleep(60)  # Wait 1 minute before next cycle
 
-    def start(self):
-        self._running = True
-        self._thread = Thread(target=self.mainloop)
-        self._thread.daemon = True
-        self._thread.start()
-
-    def stop(self):
-        self._running = False
-
-users = json.load(open('users.json', 'r'))
-
-accs = []
-for name, key in users.items():
-    TEMP = User(key[0], key[1])
-    TEMP.start()
-    accs.append(TEMP)
-
-input()
-
-for user in accs:
-    user.stop()
+if __name__ == "__main__":
+    while True:
+        try:
+            main()
+        except KeyboardInterrupt:
+            print("Bot stopped by user")
+            break
+        except Exception as e:
+            print(f"Unexpected error: {e}")
+            time.sleep(60)
