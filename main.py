@@ -3,6 +3,7 @@ import time
 import json
 import os
 import base64
+import random
 from colorama import Fore, Style, init
 from datetime import datetime
 try:
@@ -13,11 +14,14 @@ except ImportError:
 # Initialize colorama
 init(autoreset=True)
 
-# Proxy (optional, uncomment and replace with real proxy if needed)
-# PROXIES = {
-#     'http': 'http://real_proxy_ip:port',
-#     'https': 'https://real_proxy_ip:port'
-# }
+# Proxy list (free proxies, HTTP/HTTPS, low latency <1000ms, updated 17/09/2025)
+PROXY_LIST = [
+    {'http': 'http://103.187.168.45:80', 'https': 'http://103.187.168.45:80'},  # FreeProxyUpdate, US, anonymous
+    {'http': 'http://20.235.72.98:80', 'https': 'http://20.235.72.98:80'},      # ProxyScrape, US, anonymous
+    {'http': 'http://104.21.20.123:80', 'https': 'http://104.21.20.123:80'},    # Oxylabs, US, elite
+    {'http': 'http://103.187.168.45:443', 'https': 'http://103.187.168.45:443'}, # FreeProxyUpdate, EU, elite
+    {'http': 'http://20.235.72.98:443', 'https': 'http://20.235.72.98:443'},    # ProxyScrape, EU, elite
+]
 
 # Load users from users.json
 def load_users():
@@ -33,7 +37,7 @@ def load_users():
         return {}
 
 # Farm coins for a user
-def farm_coins(api_key, color_code):
+def farm_coins(api_key, color_code, max_retries=3):
     url = "https://panel.sillydev.co.uk/api/client/store/earncredits"
     # Decode key if encoded
     try:
@@ -52,7 +56,7 @@ def farm_coins(api_key, color_code):
         'Accept-Encoding': 'gzip, deflate, br',
         'Connection': 'keep-alive'
     }
-    # Initialize cloudscraper with advanced options
+    # Initialize cloudscraper
     session = cloudscraper.create_scraper(
         browser={
             'browser': 'chrome',
@@ -61,33 +65,40 @@ def farm_coins(api_key, color_code):
             'desktop': True
         },
         delay=10,
-        debug=True  # Log Cloudflare bypass attempts
+        debug=True
     ) if cloudscraper else requests.Session()
     
-    try:
-        # Use proxies if defined, otherwise None
-        response = session.post(url, headers=headers, json={}, timeout=15, proxies=None)  # Change to PROXIES if using proxy
-        if response.status_code == 200:
-            print(f"{Fore.BLUE + Style.BRIGHT}Success: Earned coins! Response: {response.text}{Style.RESET_ALL}")
-            return True
-        elif response.status_code == 401:
-            print(f"{Fore.RED}Error: Invalid token - Check your API key{Style.RESET_ALL}")
-            return False
-        elif response.status_code == 403:
-            print(f"{Fore.RED}Error: Cloudflare blocked - {response.text[:200]}{Style.RESET_ALL}")
-            return False
-        elif response.status_code == 419:
-            print(f"{Fore.YELLOW}Error: Token expired - Regenerate API key{Style.RESET_ALL}")
-            return False
-        elif response.status_code in (301, 302, 303):
-            print(f"{Fore.RED}Error: Redirect detected - {response.headers.get('Location', 'Unknown')}{Style.RESET_ALL}")
-            return False
-        else:
-            print(f"{Fore.RED}Error: {response.status_code} - {response.text[:200]}{Style.RESET_ALL}")
-            return False
-    except requests.exceptions.RequestException as e:
-        print(f"{Fore.RED}Error: Request failed - {e}{Style.RESET_ALL}")
-        return False
+    for attempt in range(max_retries):
+        # Randomly select a proxy
+        proxies = random.choice(PROXY_LIST)
+        print(f"{Fore.YELLOW}Attempt {attempt + 1}/{max_retries} with proxy: {proxies['http']}{Style.RESET_ALL}")
+        try:
+            response = session.post(url, headers=headers, json={}, timeout=15, proxies=proxies)
+            if response.status_code == 200:
+                print(f"{Fore.BLUE + Style.BRIGHT}Success: Earned coins! Response: {response.text}{Style.RESET_ALL}")
+                return True
+            elif response.status_code == 401:
+                print(f"{Fore.RED}Error: Invalid token - Check your API key{Style.RESET_ALL}")
+                return False
+            elif response.status_code == 403:
+                print(f"{Fore.RED}Error: Cloudflare blocked - {response.text[:200]}{Style.RESET_ALL}")
+                continue  # Try next proxy
+            elif response.status_code == 419:
+                print(f"{Fore.YELLOW}Error: Token expired - Regenerate API key{Style.RESET_ALL}")
+                return False
+            elif response.status_code in (301, 302, 303):
+                print(f"{Fore.RED}Error: Redirect detected - {response.headers.get('Location', 'Unknown')}{Style.RESET_ALL}")
+                return False
+            else:
+                print(f"{Fore.RED}Error: {response.status_code} - {response.text[:200]}{Style.RESET_ALL}")
+                return False
+        except requests.exceptions.RequestException as e:
+            print(f"{Fore.RED}Error: Request failed with proxy {proxies['http']} - {e}{Style.RESET_ALL}")
+            if attempt < max_retries - 1:
+                time.sleep(5)  # Wait before retry
+            continue
+    print(f"{Fore.RED}Error: All proxies failed after {max_retries} attempts{Style.RESET_ALL}")
+    return False
 
 # Main loop
 def main():
