@@ -13,11 +13,11 @@ except ImportError:
 # Initialize colorama
 init(autoreset=True)
 
-# Proxy (optional, replace with your proxy if needed)
-PROXIES = {
-    'http': 'http://your_proxy_ip:port',
-    'https': 'https://your_proxy_ip:port'
-}  # Example: 'http://123.45.67.89:8080'
+# Proxy (optional, uncomment and replace with real proxy if needed)
+# PROXIES = {
+#     'http': 'http://real_proxy_ip:port',
+#     'https': 'https://real_proxy_ip:port'
+# }
 
 # Load users from users.json
 def load_users():
@@ -48,19 +48,25 @@ def farm_coins(api_key, color_code):
         'Referer': 'https://panel.sillydev.co.uk/store/credits',
         'X-Requested-With': 'XMLHttpRequest',
         'Authorization': f'Bearer {decoded_key}',
-        # Add Cloudflare cookies if needed (get from browser)
-        'Cookie': 'cf_clearance=your_cf_clearance_cookie_here'  # Replace with actual cf_clearance
+        'Accept-Language': 'en-US,en;q=0.9,vi;q=0.8',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive'
     }
     # Initialize cloudscraper with advanced options
     session = cloudscraper.create_scraper(
-        browser={'browser': 'chrome', 'platform': 'windows', 'mobile': False},
+        browser={
+            'browser': 'chrome',
+            'platform': 'windows',
+            'mobile': False,
+            'desktop': True
+        },
         delay=10,
-        debug=False
+        debug=True  # Log Cloudflare bypass attempts
     ) if cloudscraper else requests.Session()
     
     try:
-        # Use proxies if provided
-        response = session.post(url, headers=headers, json={}, timeout=15, proxies=PROXIES if PROXIES else None)
+        # Use proxies if defined, otherwise None
+        response = session.post(url, headers=headers, json={}, timeout=15, proxies=None)  # Change to PROXIES if using proxy
         if response.status_code == 200:
             print(f"{Fore.BLUE + Style.BRIGHT}Success: Earned coins! Response: {response.text}{Style.RESET_ALL}")
             return True
