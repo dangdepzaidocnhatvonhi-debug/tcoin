@@ -16,13 +16,11 @@ logging.basicConfig(filename='bot_log.txt', level=logging.INFO,
 URL = "https://panel.sillydevelopment.co.uk"
 EARN_CREDITS_ENDPOINT = f"{URL}/api/client/store/earncredits"
 LOGIN_URL = f"{URL}/auth/login"
+COOKIE_FILE = "ck.txt"
 
-# Thông tin đăng nhập (lưu trong biến môi trường)
+# Thông tin đăng nhập
 USERNAME = os.getenv('SILLYDEV_USERNAME', 'phengfff333@gmail.com')
 PASSWORD = os.getenv('SILLYDEV_PASSWORD', 'hoilamchi')
-
-# File cookie
-COOKIE_FILE = "ck.txt"
 
 def login_and_save_cookies(session):
     """Đăng nhập và lưu cookie mới"""
@@ -35,23 +33,23 @@ def login_and_save_cookies(session):
         login_data = {
             'login_email': USERNAME,
             'login_password': PASSWORD,
-            '_token': xsrf_token  # CSRF token
+            '_token': xsrf_token
         }
         headers = {
             'Origin': URL,
             'Referer': f"{URL}/auth/login",
-            'X-Requested-With': 'XMLHttpRequest'
+            'X-Requested-With': 'XMLHttpRequest',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
         response = session.post(LOGIN_URL, data=login_data, headers=headers)
         
-        if response.status_code == 200 or 'dashboard' in response.url:
-            # Lưu cookie vào ck.txt (định dạng Netscape)
+        if response.status_code == 200 or 'dashboard' in response.url.lower():
             session.cookies.save(COOKIE_FILE, ignore_discard=True, ignore_expires=True)
             logging.info("Đã đăng nhập và lưu cookie mới")
             print("Đã đăng nhập và lưu cookie mới")
             return True
         else:
-            logging.error(f"Đăng nhập thất bại: {response.status_code}")
+            logging.error(f"Đăng nhập thất bại: {response.status_code} - {response.text}")
             print(f"Đăng nhập thất bại: {response.status_code}")
             return False
     except Exception as e:
@@ -62,14 +60,15 @@ def login_and_save_cookies(session):
 def earn_credits():
     """Gửi request kiếm credits"""
     s = requests.Session()
-    # Tải cookie từ ck.txt
     cookie_jar = MozillaCookieJar(COOKIE_FILE)
     try:
         cookie_jar.load(ignore_discard=True, ignore_expires=True)
         s.cookies.update(cookie_jar)
-    except FileNotFoundError:
-        logging.error("Không tìm thấy ck.txt, thử đăng nhập...")
-        print("Không tìm thấy ck.txt, thử đăng nhập...")
+        logging.info("Đã tải cookie từ ck.txt")
+        print("Đã tải cookie từ ck.txt")
+    except Exception as e:
+        logging.error(f"Không tìm thấy hoặc lỗi định dạng ck.txt: {e}")
+        print(f"Không tìm thấy hoặc lỗi định dạng ck.txt: {e}")
         if not login_and_save_cookies(s):
             return
 
@@ -122,21 +121,22 @@ def earn_credits():
                             {"brand": "Chromium", "version": "139"}
                         ]
                     }
-                }).encode()).decode()
+                }).encode()).decode(),
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
             }
             resp = s.post(EARN_CREDITS_ENDPOINT, headers=headers)
             
             if resp.status_code == 200:
-                logging.info("Gửi request kiếm credits thành công")
-                print("Gửi request kiếm credits thành công")
+                logging.info(f"Gửi request kiếm credits thành công: {resp.text}")
+                print(f"Gửi request kiếm credits thành công: {resp.text}")
             elif resp.status_code == 419:
                 logging.warning("Cookie hết hạn, thử đăng nhập lại...")
                 print("Cookie hết hạn, thử đăng nhập lại...")
                 if login_and_save_cookies(s):
                     continue
             else:
-                logging.error(f"Lỗi server: {resp.status_code}")
-                print(f"Lỗi server: {resp.status_code}")
+                logging.error(f"Lỗi server: {resp.status_code} - {resp.text}")
+                print(f"Lỗi server: {resp.status_code} - {resp.text}")
         except Exception as e:
             logging.error(f"Lỗi: {e}")
             print(f"Lỗi: {e}")
