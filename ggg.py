@@ -10,12 +10,12 @@ import os
 logging.basicConfig(filename='bot_log.txt', level=logging.INFO, 
                     format='%(asctime)s - %(message)s')
 
-# URL dashboard
-URL = "https://panel.sillydev.co.uk/auth/login"
+# URL dashboard (cập nhật theo domain cookie)
+URL = "https://panel.sillydev.co.uk"
 COOKIE_FILE = "cookies.json"
 
 # Thông tin đăng nhập (lưu trong biến môi trường trên Render)
-USERNAME = os.getenv('SILLYDEV_USERNAME', 'phengfff333@gmail.com')
+USERNAME = os.getenv('SILLYDEV_USERNAME', 'your_email@example.com')
 PASSWORD = os.getenv('SILLYDEV_PASSWORD', 'your_password')
 
 def setup_driver():
@@ -56,7 +56,14 @@ def load_cookies(driver):
             cookies = json.load(f)
         driver.get(URL)
         for cookie in cookies:
-            driver.add_cookie(cookie)
+            # Selenium chỉ cần name, value, domain, path (bỏ các trường khác)
+            simplified_cookie = {
+                'name': cookie['name'],
+                'value': cookie['value'],
+                'domain': cookie['domain'],
+                'path': cookie['path']
+            }
+            driver.add_cookie(simplified_cookie)
         logging.info("Đã tải cookie")
         print("Đã tải cookie")
         return True
@@ -79,7 +86,7 @@ def kiem_tra_web():
         driver.get(URL)
         time.sleep(5)
 
-        # Kiểm tra đăng nhập
+        # Kiểm tra đăng nhập (tìm tên tài khoản hoặc phần tử dashboard)
         try:
             profile_name = driver.find_element(By.CLASS_NAME, "user-profile").text  # Thay bằng class thật
             logging.info(f"Tên tài khoản: {profile_name}")
