@@ -1,127 +1,148 @@
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.options import Options
+import requests
 import time
-import logging
-import json
 import os
+import base64
+import json
+import random
+from http.cookiejar import MozillaCookieJar
+from datetime import datetime
+import logging
 
 # Cấu hình logging
 logging.basicConfig(filename='bot_log.txt', level=logging.INFO, 
                     format='%(asctime)s - %(message)s')
 
-# URL dashboard (cập nhật theo domain cookie)
-URL = "https://panel.sillydev.co.uk"
-COOKIE_FILE = "cookies.json"
+# URL và endpoint
+URL = "https://panel.sillydevelopment.co.uk"
+EARN_CREDITS_ENDPOINT = f"{URL}/api/client/store/earncredits"
+LOGIN_URL = f"{URL}/auth/login"
 
-# Thông tin đăng nhập (lưu trong biến môi trường trên Render)
-USERNAME = os.getenv('SILLYDEV_USERNAME', 'your_email@example.com')
-PASSWORD = os.getenv('SILLYDEV_PASSWORD', 'your_password')
+# Thông tin đăng nhập (lưu trong biến môi trường)
+USERNAME = os.getenv('SILLYDEV_USERNAME', 'phengfff333@gmail.com')
+PASSWORD = os.getenv('SILLYDEV_PASSWORD', 'hoilamchi')
 
-def setup_driver():
-    """Khởi tạo driver Chrome headless"""
-    options = Options()
-    options.add_argument('--headless')
-    options.add_argument('--disable-gpu')
-    options.add_argument('--no-sandbox')  # Cần cho Render
-    options.add_argument('--disable-dev-shm-usage')  # Cần cho Render
-    options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/91.0.4472.124')
-    driver = webdriver.Chrome(options=options)
-    return driver
+# File cookie
+COOKIE_FILE = "ck.txt"
 
-def login_and_save_cookies(driver):
+def login_and_save_cookies(session):
     """Đăng nhập và lưu cookie mới"""
     try:
-        driver.get(URL)
-        time.sleep(2)
-        driver.find_element(By.ID, "login_email").send_keys(USERNAME)
-        driver.find_element(By.ID, "login_password").send_keys(PASSWORD)
-        driver.find_element(By.ID, "login_button").click()
-        time.sleep(5)  # Đợi dashboard load
-        cookies = driver.get_cookies()
-        with open(COOKIE_FILE, 'w') as f:
-            json.dump(cookies, f)
-        logging.info("Đã đăng nhập và lưu cookie mới")
-        print("Đã đăng nhập và lưu cookie mới")
-        return cookies
+        # Lấy XSRF-TOKEN từ trang login
+        response = session.get(URL)
+        xsrf_token = requests.utils.unquote(session.cookies.get('XSRF-TOKEN', ''))
+        
+        # Gửi request đăng nhập
+        login_data = {
+            'login_email': USERNAME,
+            'login_password': PASSWORD,
+            '_token': xsrf_token  # CSRF token
+        }
+        headers = {
+            'Origin': URL,
+            'Referer': f"{URL}/auth/login",
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+        response = session.post(LOGIN_URL, data=login_data, headers=headers)
+        
+        if response.status_code == 200 or 'dashboard' in response.url:
+            # Lưu cookie vào ck.txt (định dạng Netscape)
+            session.cookies.save(COOKIE_FILE, ignore_discard=True, ignore_expires=True)
+            logging.info("Đã đăng nhập và lưu cookie mới")
+            print("Đã đăng nhập và lưu cookie mới")
+            return True
+        else:
+            logging.error(f"Đăng nhập thất bại: {response.status_code}")
+            print(f"Đăng nhập thất bại: {response.status_code}")
+            return False
     except Exception as e:
         logging.error(f"Lỗi khi đăng nhập: {e}")
         print(f"Lỗi khi đăng nhập: {e}")
-        return None
-
-def load_cookies(driver):
-    """Tải cookie từ file"""
-    try:
-        with open(COOKIE_FILE, 'r') as f:
-            cookies = json.load(f)
-        driver.get(URL)
-        for cookie in cookies:
-            # Selenium chỉ cần name, value, domain, path (bỏ các trường khác)
-            simplified_cookie = {
-                'name': cookie['name'],
-                'value': cookie['value'],
-                'domain': cookie['domain'],
-                'path': cookie['path']
-            }
-            driver.add_cookie(simplified_cookie)
-        logging.info("Đã tải cookie")
-        print("Đã tải cookie")
-        return True
-    except Exception as e:
-        logging.error(f"Lỗi khi tải cookie: {e}")
-        print(f"Lỗi khi tải cookie: {e}")
         return False
 
-def kiem_tra_web():
-    """Scrape trang cá nhân với cookie"""
-    driver = setup_driver()
+def earn_credits():
+    """Gửi request kiếm credits"""
+    s = requests.Session()
+    # Tải cookie từ ck.txt
+    cookie_jar = MozillaCookieJar(COOKIE_FILE)
     try:
-        # Thử tải cookie
-        if not load_cookies(driver):
-            cookies = login_and_save_cookies(driver)
-            if not cookies:
-                return
-
-        # Truy cập dashboard
-        driver.get(URL)
-        time.sleep(5)
-
-        # Kiểm tra đăng nhập (tìm tên tài khoản hoặc phần tử dashboard)
-        try:
-            profile_name = driver.find_element(By.CLASS_NAME, "user-profile").text  # Thay bằng class thật
-            logging.info(f"Tên tài khoản: {profile_name}")
-            print(f"Tên tài khoản: {profile_name}")
-        except:
-            logging.error("Không tìm thấy tên tài khoản. Cookie có thể hết hạn.")
-            print("Không tìm thấy tên tài khoản. Cookie có thể hết hạn.")
-            login_and_save_cookies(driver)
+        cookie_jar.load(ignore_discard=True, ignore_expires=True)
+        s.cookies.update(cookie_jar)
+    except FileNotFoundError:
+        logging.error("Không tìm thấy ck.txt, thử đăng nhập...")
+        print("Không tìm thấy ck.txt, thử đăng nhập...")
+        if not login_and_save_cookies(s):
             return
 
-        # Scrape trạng thái server
+    while True:
         try:
-            servers = driver.find_elements(By.CLASS_NAME, "server-status")  # Thay bằng class thật
-            for server in servers:
-                status = server.text
-                logging.info(f"Server status: {status}")
-                print(f"Server status: {status}")
-                if "Offline" in status:
-                    logging.warning("Cảnh báo: Server offline!")
-                    print("Cảnh báo: Server offline!")
-                    # Thêm code gửi thông báo
-        except:
-            logging.error("Không tìm thấy server")
-            print("Không tìm thấy server")
+            audio_fp = f'{random.getrandbits(32):08x}'
+            canvas_fp = f'{random.getrandbits(128):032x}'
+            headers = {
+                'Origin': URL,
+                'Referer': f'{URL}/store/credits',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-XSRF-TOKEN': requests.utils.unquote(s.cookies.get('XSRF-TOKEN', '')),
+                'x-audio-fingerprint': audio_fp,
+                'x-canvas-fingerprint': canvas_fp,
+                'x-browser-verification': base64.b64encode(json.dumps({
+                    "canvas": canvas_fp,
+                    "audio": audio_fp,
+                    "entropy": {
+                        "activityScore": random.randint(80, 100),
+                        "timeSinceInteraction": random.randint(1000, 6000),
+                        "sessionLength": random.randint(4000, 20000),
+                        "hasMouseActivity": True,
+                        "hasKeyboardActivity": True,
+                        "hasScrollActivity": True,
+                        "hasHadActivity": True,
+                        "noise": f'{random.getrandbits(24):06x}'
+                    },
+                    "botIndicators": [],
+                    "timestamp": int(time.time() * 1000),
+                    "requestId": f'{random.getrandbits(64):016x}',
+                    "timezoneOffset": -420,
+                    "timezoneString": "Asia/Bangkok",
+                    "screenInfo": {
+                        "width": 1550,
+                        "height": 721,
+                        "availWidth": 1550,
+                        "availHeight": 680,
+                        "colorDepth": 24,
+                        "pixelDepth": 24
+                    },
+                    "navigatorInfo": {
+                        "hardwareConcurrency": 4,
+                        "deviceMemory": 4,
+                        "platform": "Win32",
+                        "languages": ["vi-VN", "vi"],
+                        "connectionType": "unknown",
+                        "userAgentData": [
+                            {"brand": "Not;A=Brand", "version": "99"},
+                            {"brand": "Google Chrome", "version": "139"},
+                            {"brand": "Chromium", "version": "139"}
+                        ]
+                    }
+                }).encode()).decode()
+            }
+            resp = s.post(EARN_CREDITS_ENDPOINT, headers=headers)
+            
+            if resp.status_code == 200:
+                logging.info("Gửi request kiếm credits thành công")
+                print("Gửi request kiếm credits thành công")
+            elif resp.status_code == 419:
+                logging.warning("Cookie hết hạn, thử đăng nhập lại...")
+                print("Cookie hết hạn, thử đăng nhập lại...")
+                if login_and_save_cookies(s):
+                    continue
+            else:
+                logging.error(f"Lỗi server: {resp.status_code}")
+                print(f"Lỗi server: {resp.status_code}")
+        except Exception as e:
+            logging.error(f"Lỗi: {e}")
+            print(f"Lỗi: {e}")
+        time.sleep(60)  # Delay 60s
 
-    except Exception as e:
-        logging.error(f"Lỗi khi scrape: {e}")
-        print(f"Lỗi: {e}")
-    
-    finally:
-        driver.quit()
-
-# Vòng lặp để treo bot
-print("Bắt đầu bot treo trang cá nhân sillydev.co.uk...")
-while True:
-    print(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] Đang kiểm tra...")
-    kiem_tra_web()
-    time.sleep(300)  # Kiểm tra mỗi 5 phút
+# Chạy bot
+if __name__ == "__main__":
+    print("Bắt đầu bot kiếm credits trên panel.sillydev.co.uk...")
+    earn_credits()
