@@ -13,6 +13,12 @@ except ImportError:
 # Initialize colorama
 init(autoreset=True)
 
+# Proxy (optional, replace with your proxy if needed)
+PROXIES = {
+    'http': 'http://your_proxy_ip:port',
+    'https': 'https://your_proxy_ip:port'
+}  # Example: 'http://123.45.67.89:8080'
+
 # Load users from users.json
 def load_users():
     try:
@@ -35,22 +41,34 @@ def farm_coins(api_key, color_code):
     except:
         decoded_key = api_key
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36',
         'Accept': 'application/json, text/plain, */*',
         'Content-Type': 'application/json',
         'Origin': 'https://panel.sillydev.co.uk',
         'Referer': 'https://panel.sillydev.co.uk/store/credits',
         'X-Requested-With': 'XMLHttpRequest',
-        'Authorization': f'Bearer {decoded_key}'  # Adjust if server uses different header
+        'Authorization': f'Bearer {decoded_key}',
+        # Add Cloudflare cookies if needed (get from browser)
+        'Cookie': 'cf_clearance=your_cf_clearance_cookie_here'  # Replace with actual cf_clearance
     }
-    session = cloudscraper.create_scraper() if cloudscraper else requests.Session()
+    # Initialize cloudscraper with advanced options
+    session = cloudscraper.create_scraper(
+        browser={'browser': 'chrome', 'platform': 'windows', 'mobile': False},
+        delay=10,
+        debug=False
+    ) if cloudscraper else requests.Session()
+    
     try:
-        response = session.post(url, headers=headers, json={}, timeout=10)
+        # Use proxies if provided
+        response = session.post(url, headers=headers, json={}, timeout=15, proxies=PROXIES if PROXIES else None)
         if response.status_code == 200:
-            print(f"{Fore.BLUE + Style.BRIGHT}Success: Earned coins!{Style.RESET_ALL}")
+            print(f"{Fore.BLUE + Style.BRIGHT}Success: Earned coins! Response: {response.text}{Style.RESET_ALL}")
             return True
         elif response.status_code == 401:
             print(f"{Fore.RED}Error: Invalid token - Check your API key{Style.RESET_ALL}")
+            return False
+        elif response.status_code == 403:
+            print(f"{Fore.RED}Error: Cloudflare blocked - {response.text[:200]}{Style.RESET_ALL}")
             return False
         elif response.status_code == 419:
             print(f"{Fore.YELLOW}Error: Token expired - Regenerate API key{Style.RESET_ALL}")
@@ -59,7 +77,7 @@ def farm_coins(api_key, color_code):
             print(f"{Fore.RED}Error: Redirect detected - {response.headers.get('Location', 'Unknown')}{Style.RESET_ALL}")
             return False
         else:
-            print(f"{Fore.RED}Error: {response.status_code} - {response.text}{Style.RESET_ALL}")
+            print(f"{Fore.RED}Error: {response.status_code} - {response.text[:200]}{Style.RESET_ALL}")
             return False
     except requests.exceptions.RequestException as e:
         print(f"{Fore.RED}Error: Request failed - {e}{Style.RESET_ALL}")
@@ -75,7 +93,7 @@ def main():
     print("Starting SillyDev Coins Farmer...")
     for username, config in users.items():
         api_key, color_code = config
-        if not api_key.startswith(('ptlc_', 'cHRsY18=')):  # Accept both raw and base64-encoded key
+        if not api_key.startswith(('ptlc_', 'cHRsY18=')):
             print(f"{Fore.RED}Error: Invalid token for {username} - API key must start with 'ptlc_' or be base64-encoded{Style.RESET_ALL}")
             continue
 
@@ -84,7 +102,7 @@ def main():
         if not success:
             print(f"Failed to farm for {username}")
 
-    time.sleep(60)  # Wait 1 minute before next cycle
+    time.sleep(300)  # Wait 5 minutes to avoid rate limit
 
 if __name__ == "__main__":
     while True:
@@ -95,4 +113,4 @@ if __name__ == "__main__":
             break
         except Exception as e:
             print(f"Unexpected error: {e}")
-            time.sleep(60)
+            time.sleep(300)
